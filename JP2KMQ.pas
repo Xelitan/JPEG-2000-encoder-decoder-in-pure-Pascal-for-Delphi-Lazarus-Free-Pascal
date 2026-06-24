@@ -28,7 +28,7 @@ const
   JPC_MQENC_PTERM   = 1;   // predictable termination
 
 type
-  { An MQ state-table entry. }
+  // An MQ state-table entry.
   TMqState = record
     QEval: Word;       // Qe value
     Mps: Byte;         // the MPS symbol (0/1)
@@ -36,14 +36,14 @@ type
     NLps: Integer;     // index of next state on LPS
   end;
 
-  { Per-context initialisation info. }
+  // Per-context initialisation info.
   TMqCtx = record
     Mps: Byte;
     Ind: ShortInt;
   end;
   TMqCtxArray = array of TMqCtx;
 
-  { MQ arithmetic encoder. }
+  // MQ arithmetic encoder.
   TMqEnc = class
   private
     FCReg, FAReg, FCTReg: Cardinal;
@@ -69,7 +69,7 @@ type
     property Error: Boolean read FErr;
   end;
 
-  { MQ arithmetic decoder. }
+  // MQ arithmetic decoder.
   TMqDec = class
   private
     FCReg, FAReg, FCTReg: Cardinal;
@@ -92,7 +92,7 @@ type
   end;
 
 const
-  { The MQ coder per-state information (ITU-T T.88 / ISO 15444-1, Table C-2). }
+  // The MQ coder per-state information (ITU-T T.88 / ISO 15444-1, Table C-2).
   MqStates: array[0..93] of TMqState = (
     (QEval: $5601; Mps: 0; NMps:  2; NLps:  3),
     (QEval: $5601; Mps: 1; NMps:  3; NLps:  2),
@@ -192,7 +192,7 @@ const
 
 implementation
 
-{ =========================================================== encoder ==== }
+// =========================================================== encoder ====
 
 constructor TMqEnc.Create(AMaxCtxs: Integer; AOut: TMemStream);
 begin
@@ -201,7 +201,7 @@ begin
   SetLength(FCtxs, AMaxCtxs);
   FCurCtx := 0;
   Init;
-  { Initialise per-context info to state 0. }
+  // Initialise per-context info to state 0.
   SetCtxs(nil);
 end;
 
@@ -378,7 +378,7 @@ begin
   Result := 0;
 end;
 
-{ =========================================================== decoder ==== }
+// =========================================================== decoder ====
 
 constructor TMqDec.Create(AMaxCtxs: Integer; AIn: TMemStream);
 begin

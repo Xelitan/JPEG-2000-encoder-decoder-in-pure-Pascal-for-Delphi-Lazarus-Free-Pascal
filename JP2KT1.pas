@@ -33,51 +33,51 @@ uses
   SysUtils, JP2KCommon, JP2KMQ, JP2KBS;
 
 const
-  { Subband orientations (match jpc_tsfb_orient). }
+  // Subband orientations (match jpc_tsfb_orient).
   ORIENT_LL = 0;
   ORIENT_LH = 1;
   ORIENT_HL = 2;
   ORIENT_HH = 3;
 
-{ Number of magnitude bit-planes needed for a code-block (= floor(log2(maxabs))+1). }
+// Number of magnitude bit-planes needed for a code-block (= floor(log2(maxabs))+1).
 function T1NumBps(const Data: TIntArray; Count: Integer): Integer;
 
-{ Encode a code-block (Data: row-major signed coefficients, W*H).
-  Returns the MQ byte stream; NumPasses receives 3*numbps-2 (0 if numbps=0). }
+// Encode a code-block (Data: row-major signed coefficients, W*H).
+// Returns the MQ byte stream; NumPasses receives 3*numbps-2 (0 if numbps=0).
 function T1Encode(const Data: TIntArray; W, H, Orient, NumBps: Integer;
   out NumPasses: Integer): TBytes;
 
-{ Decode a code-block back into Data (allocated W*H, zero-filled here). }
+// Decode a code-block back into Data (allocated W*H, zero-filled here).
 procedure T1Decode(const Bytes: TBytes; W, H, Orient, NumBps: Integer;
   var Data: TIntArray);
 
 const
-  { Code-block style flags (match jpc_cs JPC_COX_*). }
-  COX_LAZY    = $01;   { selective arithmetic-coding bypass (raw passes) }
-  COX_RESET   = $02;   { reset MQ contexts each pass }
-  COX_TERMALL = $04;   { terminate each coding pass }
-  COX_VSC     = $08;   { vertically causal contexts }
-  COX_SEGSYM  = $10;   { segmentation symbols }
-  COX_PTERM   = $20;   { predictable termination }
+  // Code-block style flags (match jpc_cs JPC_COX_*).
+  COX_LAZY    = $01;   // selective arithmetic-coding bypass (raw passes)
+  COX_RESET   = $02;   // reset MQ contexts each pass
+  COX_TERMALL = $04;   // terminate each coding pass
+  COX_VSC     = $08;   // vertically causal contexts
+  COX_SEGSYM  = $10;   // segmentation symbols
+  COX_PTERM   = $20;   // predictable termination
 
 type
   TSegInfo = record
-    np: Integer;       { number of coding passes in this segment }
-    raw: Boolean;      { True = raw (bypass) segment, False = MQ }
-    data: TBytes;      { this segment's coded bytes (accumulated over layers) }
-    dlen: Integer;     { valid bytes in data }
-    maxcap: Integer;   { pass capacity (internal, used while building) }
+    np: Integer;       // number of coding passes in this segment
+    raw: Boolean;      // True = raw (bypass) segment, False = MQ
+    data: TBytes;      // this segment's coded bytes (accumulated over layers)
+    dlen: Integer;     // valid bytes in data
+    maxcap: Integer;   // pass capacity (internal, used while building)
   end;
 
-{ Decode a code-block that may use any code-block style (lazy/termall/VSC/
-  segsym/reset/pterm), given its segment list (computed by tier-2). }
+// Decode a code-block that may use any code-block style (lazy/termall/VSC/
+// segsym/reset/pterm), given its segment list (computed by tier-2).
 procedure T1DecodeSeg(const Segs: array of TSegInfo;
   W, H, Orient, NumBps, Cbsty: Integer; var Data: TIntArray);
 
 implementation
 
 const
-  { Per-sample neighbour-significance / sign flag bits. }
+  // Per-sample neighbour-significance / sign flag bits.
   F_NESIG = $0001; F_SESIG = $0002; F_SWSIG = $0004; F_NWSIG = $0008;
   F_NSIG = $0010; F_ESIG = $0020; F_SSIG = $0040; F_WSIG = $0080;
   F_OTHSIGMSK = F_NSIG or F_NESIG or F_ESIG or F_SESIG or F_SSIG or
@@ -102,7 +102,7 @@ var
   magctxnolut: array[0..4095] of Byte;
   mqctxs: TMqCtxArray;
 
-{ ------------------------------------------------ context computation --- }
+// ------------------------------------------------ context computation ---
 
 function CalcZcCtxNo(f, orient: Integer): Integer;
 var
@@ -264,7 +264,7 @@ begin
   end;
 end;
 
-{ Context-lookup helpers (the JPC_GET* macros). }
+// Context-lookup helpers (the JPC_GET* macros).
 function GETZCCTXNO(f, orient: Integer): Integer; inline;
 begin
   Result := zcctxnolut[(orient shl 8) or (f and F_OTHSIGMSK)];
@@ -285,8 +285,8 @@ begin
   Result := magctxnolut[(f and F_OTHSIGMSK) or (Ord((f and F_REFINE) <> 0) shl 11)];
 end;
 
-{ Update neighbour flags around fp after a coefficient became significant.
-  s = sign (True = negative). Vertically-causal mode is unused (always False). }
+// Update neighbour flags around fp after a coefficient became significant.
+// s = sign (True = negative). Vertically-causal mode is unused (always False).
 procedure UpdateFlags4(var Flags: TIntArray; fp, frowstep: Integer; s: Boolean); inline;
 var
   np, sp: Integer;
@@ -313,7 +313,7 @@ begin
   end;
 end;
 
-{ ============================================================ public ==== }
+// ============================================================ public ====
 
 function T1NumBps(const Data: TIntArray; Count: Integer): Integer;
 var
@@ -362,7 +362,7 @@ begin
 
     if passtype = 1 then
     begin
-      { ---- significance propagation pass ---- }
+      // ---- significance propagation pass ----
       i := 0;
       while i < H do
       begin
@@ -393,7 +393,7 @@ begin
     end
     else if passtype = 2 then
     begin
-      { ---- magnitude refinement pass ---- }
+      // ---- magnitude refinement pass ----
       i := 0;
       while i < H do
       begin
@@ -414,7 +414,7 @@ begin
     end
     else
     begin
-      { ---- cleanup pass (with run-length aggregation) ---- }
+      // ---- cleanup pass (with run-length aggregation) ----
       i := 0;
       while i < H do
       begin
@@ -445,7 +445,7 @@ begin
             enc.SetCurCtx(UCTXNO);
             enc.PutBit((runlen shr 1) and 1);
             enc.PutBit(runlen and 1);
-            { run-length sample is significant: emit sign directly }
+            // run-length sample is significant: emit sign directly
             r := i + runlen; fp := FIdx(r, j); dp := r * W + j;
             f := flags[fp];
             sgn := Ord(Data[dp] < 0);
@@ -642,10 +642,10 @@ begin
   ms.Free;
 end;
 
-{ ===================================== full code-block decoder (cbsty) == }
+// ===================================== full code-block decoder (cbsty) ==
 
-{ Neighbour-flag update with optional vertically-causal mode (the north
-  neighbour is not updated when vcausal is set - jpc_t1cod JPC_UPDATEFLAGS4). }
+// Neighbour-flag update with optional vertically-causal mode (the north
+// neighbour is not updated when vcausal is set - jpc_t1cod JPC_UPDATEFLAGS4).
 procedure UpdateFlags4V(var Flags: TIntArray; fp, frowstep: Integer;
   s, vcausal: Boolean);
 var
@@ -717,7 +717,7 @@ end;
 procedure TCblkDec.SetMQInput(ms: TMemStream);
 begin
   mqd.SetInput(ms);
-  mqd.Init;     { resets coder registers; contexts persist }
+  mqd.Init;     // resets coder registers; contexts persist
 end;
 
 procedure TCblkDec.ResetCtx;
@@ -776,7 +776,7 @@ begin
           v := bs.GetBit;
           if v = 1 then
           begin
-            sgn := bs.GetBit;     { raw sign, no SPB }
+            sgn := bs.GetBit;     // raw sign, no SPB
             UpdateFlags4V(flags, fp, frowstep, sgn = 1, (k = 0) and Vcausal);
             flags[fp] := flags[fp] or F_SIG;
             if sgn = 1 then data[dp] := -oph else data[dp] := oph;
@@ -904,7 +904,7 @@ begin
     segv := (segv shl 1) or mqd.GetBit;
     segv := (segv shl 1) or mqd.GetBit;
     segv := (segv shl 1) or mqd.GetBit;
-    { segv should be 0xA; ignore mismatch (corrupt stream) }
+    // segv should be 0xA; ignore mismatch (corrupt stream)
   end;
 end;
 
@@ -943,7 +943,7 @@ begin
       end;
       for pp := 0 to Segs[s].np - 1 do
       begin
-        passtype := passno mod 3;   { 0=CLN,1=SIG,2=REF }
+        passtype := passno mod 3;   // 0=CLN,1=SIG,2=REF
         if passtype = 1 then
         begin
           if Segs[s].raw then cb.SigPassRaw(bs, bitpos) else cb.SigPassMQ(bitpos);
@@ -953,7 +953,7 @@ begin
           if Segs[s].raw then cb.RefPassRaw(bs, bitpos) else cb.RefPassMQ(bitpos);
         end
         else
-          cb.ClnPassMQ(bitpos);     { cleanup is always MQ }
+          cb.ClnPassMQ(bitpos);     // cleanup is always MQ
         if reset and not Segs[s].raw then cb.ResetCtx;
         if passtype = 0 then Dec(bitpos);
         Inc(passno);

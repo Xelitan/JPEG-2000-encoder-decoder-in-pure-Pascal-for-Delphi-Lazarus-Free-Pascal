@@ -39,7 +39,7 @@ type
     function FillBuf: Integer;
     function GetEofFlag: Boolean;
   public
-    { Open a bit stream over a byte stream. AWrite selects write vs read. }
+    // Open a bit stream over a byte stream. AWrite selects write vs read.
     constructor Create(AStream: TMemStream; AWrite: Boolean);
 
     function GetBit: Integer;
@@ -53,7 +53,7 @@ type
     function NeedAlign: Integer;
     function Pending: Integer;
 
-    { Flush (align) and detach. Does not free the underlying stream. }
+    // Flush (align) and detach. Does not free the underlying stream.
     function CloseBs: Integer;
 
     property EofReached: Boolean read GetEofFlag;

@@ -25,7 +25,7 @@ uses
 const
   JP2K_EOF = -1;
 
-  { Seek origins (match C SEEK_SET/CUR/END). }
+  // Seek origins (match C SEEK_SET/CUR/END).
   SEEK_SET = 0;
   SEEK_CUR = 1;
   SEEK_END = 2;
@@ -36,9 +36,9 @@ type
   TIntArray  = array of Integer;
   TByteArray = array of Byte;
 
-  { In-memory byte stream. Supports both reading (from a supplied buffer) and
-    writing (growable). Used as the byte backbone for the MQ coder, tier-1,
-    tier-2 and codestream marker I/O. }
+  // In-memory byte stream. Supports both reading (from a supplied buffer) and
+  //  writing (growable). Used as the byte backbone for the MQ coder, tier-1,
+  //  tier-2 and codestream marker I/O.
   TMemStream = class
   private
     FData: TBytes;     // backing store
@@ -46,13 +46,13 @@ type
     FPos: Integer;     // current cursor
     procedure EnsureCap(ANeeded: Integer);
   public
-    { Create an empty, writable stream. }
+    // Create an empty, writable stream.
     constructor Create; overload;
-    { Create a stream initialised with a copy of ASize bytes from AData,
-      positioned at the start; still writable/appendable. }
+    // Create a stream initialised with a copy of ASize bytes from AData,
+    //  positioned at the start; still writable/appendable.
     constructor Create(const AData: TBytes; ASize: Integer); overload;
 
-    { Read/write a single byte. GetC returns JP2K_EOF at end of data. }
+    // Read/write a single byte. GetC returns JP2K_EOF at end of data.
     function GetC: Integer;
     function PutC(B: Byte): Integer;
 
@@ -62,26 +62,26 @@ type
     procedure Seek(Offset: Integer; Origin: Integer);
     function Tell: Integer;
 
-    { Snapshot of the valid bytes [0..Size-1]. }
+    // Snapshot of the valid bytes [0..Size-1].
     function ToBytes: TBytes;
 
     property Size: Integer read FSize;
     property Position: Integer read FPos;
   end;
 
-{ Floor of a/b for b>0 (true mathematical floor, unlike Pascal `div`). }
+// Floor of a/b for b>0 (true mathematical floor, unlike Pascal `div`).
 function FloorDiv(A, B: Integer): Integer; inline;
-{ Ceiling of a/b for b>0. }
+// Ceiling of a/b for b>0.
 function CeilDiv(A, B: Integer): Integer; inline;
-{ Floor of a / 2^n (arithmetic right shift). }
+// Floor of a / 2^n (arithmetic right shift).
 function FloorDivPow2(A, N: Integer): Integer; inline;
-{ Ceiling of a / 2^n. }
+// Ceiling of a / 2^n.
 function CeilDivPow2(A, N: Integer): Integer; inline;
 
-{ floor(log2(x)) for x>0  (jpc_floorlog2). }
+// floor(log2(x)) for x>0  (jpc_floorlog2).
 function FloorLog2(X: Cardinal): Integer;
-{ Bit position of the first leading one in x>=0, or -1 if x=0
-  (jpc_int_firstone). }
+// Bit position of the first leading one in x>=0, or -1 if x=0
+// (jpc_int_firstone).
 function IntFirstOne(X: Integer): Integer;
 
 function MinI(A, B: Integer): Integer; inline;
@@ -89,7 +89,7 @@ function MaxI(A, B: Integer): Integer; inline;
 
 implementation
 
-{ ------------------------------------------------------------------ math }
+// ------------------------------------------------------------------ math
 
 function FloorDiv(A, B: Integer): Integer;
 var
@@ -147,7 +147,7 @@ begin
   if A > B then Result := A else Result := B;
 end;
 
-{ ------------------------------------------------------------ TMemStream }
+// ------------------------------------------------------------ TMemStream
 
 constructor TMemStream.Create;
 begin
@@ -239,7 +239,7 @@ begin
   if FPos > FSize then
   begin
     EnsureCap(FPos);
-    { Growing the cursor past the end zero-fills the gap. }
+    // Growing the cursor past the end zero-fills the gap.
     FillChar(FData[FSize], FPos - FSize, 0);
     FSize := FPos;
   end;

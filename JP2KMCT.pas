@@ -21,11 +21,11 @@ interface
 uses
   JP2KCommon, JP2KMatrix;
 
-{ Forward / inverse reversible colour transform (RGB <-> YUV, integer). }
+// Forward / inverse reversible colour transform (RGB <-> YUV, integer).
 procedure RCT(C0, C1, C2: TIntMatrix);
 procedure IRCT(C0, C1, C2: TIntMatrix);
 
-{ Forward / inverse irreversible colour transform (RGB <-> YCbCr, float). }
+// Forward / inverse irreversible colour transform (RGB <-> YCbCr, float).
 procedure ICT(C0, C1, C2: TDblMatrix);
 procedure IICT(C0, C1, C2: TDblMatrix);
 

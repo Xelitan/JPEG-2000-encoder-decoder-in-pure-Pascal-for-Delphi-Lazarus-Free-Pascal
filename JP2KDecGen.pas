@@ -22,9 +22,9 @@ uses
   SysUtils, JP2KCommon, JP2KMatrix, JP2KMCT, JP2KWavelet, JP2KT1,
   JP2KTagTree, JP2KBS, JP2KCodec;
 
-{ Decode a raw .jpc codestream (general single-tile). }
+// Decode a raw .jpc codestream (general single-tile).
 function DecodeGeneralJpc(const Bytes: TBytes): TJp2kImage;
-{ Decode .jp2 or .jpc (auto-detected). }
+// Decode .jp2 or .jpc (auto-detected).
 function DecodeGeneral(const Bytes: TBytes): TJp2kImage;
 
 implementation
@@ -70,7 +70,7 @@ type
   TPktRef = record c, r, prc, lyr: Integer; end;
   TPktCb = record bd, cbi, seg, len: Integer; end;
 
-{ ----- small endian / quant helpers (local copies) ----- }
+// ----- small endian / quant helpers (local copies) -----
 
 function RU16(ms: TMemStream): Integer;
 var a, b: Integer;
@@ -97,7 +97,7 @@ begin
   Result := (1.0 + (word and $7ff) / 2048.0) * Pow2d(prec - (word shr 11));
 end;
 
-{ ----- variable-length codes (tier-2) ----- }
+// ----- variable-length codes (tier-2) -----
 
 function GetCommaCode(bs: TBitStream): Integer;
 var n, v: Integer;
@@ -109,7 +109,7 @@ begin
     if v < 0 then Exit(-1);
     if v = 0 then Break;
     Inc(n);
-    if n > 40 then Exit(-1);   { guard against EOF/desync infinite loop }
+    if n > 40 then Exit(-1);   // guard against EOF/desync infinite loop
   end;
   Result := n;
 end;
@@ -142,7 +142,7 @@ begin
   Result := n;
 end;
 
-{ ----- subband coordinates (jpc_tsfb_getbands2), origin (0,0) ----- }
+// ----- subband coordinates (jpc_tsfb_getbands2), origin (0,0) -----
 
 procedure GGetBands(locxs, locys, xs, ys, xe, ye, numlvls: Integer;
   var bnds: array of TBandCoord; var n: Integer);
@@ -175,27 +175,27 @@ begin
   end;
 end;
 
-{ ============================================================ decoder === }
+// ============================================================ decoder ===
 
-{ Coding-pass segment length/type (jpc_t1cod JPC_SEGPASSCNT / JPC_SEGTYPE,
-  decoder form with an effectively unbounded pass count). }
+// Coding-pass segment length/type (jpc_t1cod JPC_SEGPASSCNT / JPC_SEGTYPE,
+// decoder form with an effectively unbounded pass count).
 function SegPassCnt(passno, firstpassno, cbsty: Integer): Integer;
 begin
   if (cbsty and COX_TERMALL) <> 0 then Result := 1
   else if (cbsty and COX_LAZY) <> 0 then
   begin
     if passno < firstpassno + 10 then Result := 10 - (passno - firstpassno)
-    else if (passno mod 3) = 1 then Result := 2   { SIG }
-    else Result := 1;                             { REF or CLN }
+    else if (passno mod 3) = 1 then Result := 2   // SIG
+    else Result := 1;                             // REF or CLN
   end
-  else Result := 32 * 3 - 2;                       { JPC_PREC*3 - 2 }
+  else Result := 32 * 3 - 2;                       // JPC_PREC*3 - 2
 end;
 
 function SegIsRaw(passno, firstpassno, cbsty: Integer): Boolean;
 begin
   if (cbsty and COX_LAZY) <> 0 then
   begin
-    if (passno mod 3) = 0 then Result := False     { cleanup always MQ }
+    if (passno mod 3) = 0 then Result := False     // cleanup always MQ
     else Result := passno >= firstpassno + 10;
   end
   else
@@ -489,7 +489,7 @@ var
             numnew := GetNumNewPasses(bs);
             m := GetCommaCode(bs);
             cb^.numlenbits := cb^.numlenbits + m;
-            { split the new passes into coding-pass segments }
+            // split the new passes into coding-pass segments
             rem := numnew;
             while rem > 0 do
             begin
@@ -524,7 +524,7 @@ var
         bs.InAlign($7f, 0);
       bs.CloseBs; bs.Free;
 
-      { Packet body: append each segment's bytes (read from body, in order). }
+      // Packet body: append each segment's bytes (read from body, in order).
       for j := 0 to pktcbN - 1 do
       begin
         cb := @rl^.bd[pktcb[j].bd].pr[pp].cb[pktcb[j].cbi];
@@ -581,7 +581,7 @@ var
               cbw := cb^.cx1 - cb^.cx0; cbh := cb^.cy1 - cb^.cy0;
               nb := numbps[cc][bd^.bndno] - cb^.numimsbs;
               T1DecodeSeg(Copy(cb^.segs, 0, cb^.nsegs), cbw, cbh, bd^.orient, nb, cbsty, cdata);
-              { ROI maxshift undo on integer indices. }
+              // ROI maxshift undo on integer indices.
               if roishift[cc] > 0 then
               begin
                 thresh := 1 shl roishift[cc];
@@ -628,7 +628,7 @@ var
       if reversible then IRCT(mis[0], mis[1], mis[2]) else IICT(mds[0], mds[1], mds[2]);
     end;
 
-    { Img is preallocated by the caller; write this tile's region. }
+    // Img is preallocated by the caller; write this tile's region.
     for cc := 0 to NumComps - 1 do
     begin
       shift := 1 shl (prec[cc] - 1);
@@ -782,22 +782,22 @@ begin
   ntiles := numtilesX * numtilesY;
   SetLength(tilebody, ntiles);
 
-  { ---- collect packet data per tile (marker currently = first SOT) ---- }
+  // ---- collect packet data per tile (marker currently = first SOT) ----
   while marker = MS_SOT do
   begin
-    sotmarkpos := ms.Position - 2;            { position of the FF90 marker }
-    RU16(ms);                                 { Lsot }
+    sotmarkpos := ms.Position - 2;            // position of the FF90 marker
+    RU16(ms);                                 // Lsot
     isot := RU16(ms);
     psot := Integer(RU32(ms));
-    ms.GetC; ms.GetC;                         { TPsot, TNsot }
-    while True do                             { skip tile-part header to SOD }
+    ms.GetC; ms.GetC;                         // TPsot, TNsot
+    while True do                             // skip tile-part header to SOD
     begin
       m2 := RU16(ms);
       if (m2 = MS_SOD) or (m2 = MS_EOC) or (m2 < 0) then Break;
       l2 := RU16(ms);
       ms.Seek(ms.Position + l2 - 2, SEEK_SET);
     end;
-    dpos := ms.Position;                      { first packet byte }
+    dpos := ms.Position;                      // first packet byte
     if psot > 0 then
       k := sotmarkpos + psot
     else
@@ -822,7 +822,7 @@ begin
     marker := RU16(ms);
   end;
 
-  { ---- decode each tile into its region of the image ---- }
+  // ---- decode each tile into its region of the image ----
   Img := TJp2kImage.Create(W, H, NumComps, prec[0]);
   SetLength(bnds, 1 + 3 * L);
   for tnum := 0 to ntiles - 1 do

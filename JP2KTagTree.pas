@@ -78,7 +78,7 @@ begin
 
   SetLength(FNodes, FNumNodes);
 
-  { Initialise the parent links. }
+  // Initialise the parent links.
   node := 0;
   parentnode := FNumLeafsH * FNumLeafsV;
   parentnode0 := parentnode;

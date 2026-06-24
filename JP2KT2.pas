@@ -45,17 +45,17 @@ type
     Bands: array of TT2Band;
   end;
 
-{ Encode one packet (header + body) to Outp. }
+// Encode one packet (header + body) to Outp.
 procedure T2EncodePacket(Outp: TMemStream; const Pkt: TT2Packet);
 
-{ Decode one packet from Inp. The caller must have populated, for every band,
-  Present and the code-block grid (CblksW/CblksH and the Cblks array length).
-  Fills each included code-block's NumPasses, NumImsbs and DataBytes. }
+// Decode one packet from Inp. The caller must have populated, for every band,
+// Present and the code-block grid (CblksW/CblksH and the Cblks array length).
+// Fills each included code-block's NumPasses, NumImsbs and DataBytes.
 procedure T2DecodePacket(Inp: TMemStream; var Pkt: TT2Packet);
 
 implementation
 
-{ ---- variable-length codes (exactly as in JasPer) ---- }
+// ---- variable-length codes (exactly as in JasPer) ----
 
 function PutCommaCode(bs: TBitStream; n: Integer): Integer;
 begin
@@ -126,7 +126,7 @@ begin
   Result := n;
 end;
 
-{ ---- packet coding ---- }
+// ---- packet coding ----
 
 procedure T2EncodePacket(Outp: TMemStream; const Pkt: TT2Packet);
 var
@@ -149,7 +149,7 @@ begin
     SetLength(numlenbits, ncblks);
     for ci := 0 to ncblks - 1 do numlenbits[ci] := 3;  // Lblock initial value (ISO 15444-1)
     try
-      { Seed the tag trees. }
+      // Seed the tag trees.
       for ci := 0 to ncblks - 1 do
         imsbtree.SetValue(imsbtree.GetLeaf(ci), band.Cblks[ci].NumImsbs);
       for ci := 0 to ncblks - 1 do
@@ -161,7 +161,7 @@ begin
         incltree.Encode(incltree.GetLeaf(ci), 1, bs);     // inclusion at layer 0
         if band.Cblks[ci].NumPasses <= 0 then Continue;
 
-        { number of leading insignificant bit-planes (incremental). }
+        // number of leading insignificant bit-planes (incremental).
         i := 1;
         while imsbtree.Encode(imsbtree.GetLeaf(ci), i, bs) = 0 do
           Inc(i);
@@ -188,7 +188,7 @@ begin
   bs.CloseBs;
   bs.Free;
 
-  { Packet body: concatenated code-block byte streams. }
+  // Packet body: concatenated code-block byte streams.
   for bandno := 0 to High(Pkt.Bands) do
   begin
     band := Pkt.Bands[bandno];
@@ -233,7 +233,7 @@ begin
             Pkt.Bands[bandno].Cblks[ci].NumPasses := 0;
             Continue;
           end;
-          { leading insignificant bit-planes. }
+          // leading insignificant bit-planes.
           i := 1;
           while imsbtree.Decode(imsbtree.GetLeaf(ci), i, bs) = 0 do
             Inc(i);
@@ -261,7 +261,7 @@ begin
 
   if present <= 0 then Exit;
 
-  { Packet body. }
+  // Packet body.
   for bandno := 0 to High(Pkt.Bands) do
   begin
     if not Pkt.Bands[bandno].Present then Continue;

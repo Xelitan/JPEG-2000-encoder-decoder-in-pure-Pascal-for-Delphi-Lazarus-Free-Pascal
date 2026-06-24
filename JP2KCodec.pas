@@ -53,24 +53,24 @@ function DefaultEncodeOptions: TEncodeOptions;
 function EncodeToJpc(Img: TJp2kImage; const Opt: TEncodeOptions): TBytes;
 function DecodeFromJpc(const Bytes: TBytes): TJp2kImage;
 
-{ JP2 file-format (box) wrapper. }
+// JP2 file-format (box) wrapper.
 function IsJp2(const Bytes: TBytes): Boolean;
-{ Wrap a raw codestream in a minimal, conformant JP2 box structure
-  (Signature + File Type + JP2 Header[Image Header + Colour Spec] + Codestream). }
+// Wrap a raw codestream in a minimal, conformant JP2 box structure
+// (Signature + File Type + JP2 Header[Image Header + Colour Spec] + Codestream).
 function WrapJp2(const Jpc: TBytes; W, H, NumComps, Prec: Integer): TBytes;
-{ Extract the contiguous codestream (jp2c box) from a JP2 file. }
+// Extract the contiguous codestream (jp2c box) from a JP2 file.
 function UnwrapJp2(const Bytes: TBytes): TBytes;
 
-{ Encode straight to a .jp2 file (codestream wrapped in JP2 boxes). }
+// Encode straight to a .jp2 file (codestream wrapped in JP2 boxes).
 function EncodeToJp2(Img: TJp2kImage; const Opt: TEncodeOptions): TBytes;
-{ Decode either a raw .jpc codestream or a .jp2 file (auto-detected). }
+// Decode either a raw .jpc codestream or a .jp2 file (auto-detected).
 function DecodeAny(const Bytes: TBytes): TJp2kImage;
 
-{ Decode a *standard* reversible (5/3) JPEG 2000 raw codestream as produced by
-  a conformant encoder such as JasPer (jasper -T jpc -O mode=int). Supports the
-  single-tile case with no precinct partitions, SOP/EPH off. Raises EJp2kError
-  on an irreversible or otherwise unsupported codestream. This demonstrates
-  that the tier-1/tier-2/5-3 pipeline here is format-compatible with JasPer. }
+// Decode a *standard* reversible (5/3) JPEG 2000 raw codestream as produced by
+// a conformant encoder such as JasPer (jasper -T jpc -O mode=int). Supports the
+// single-tile case with no precinct partitions, SOP/EPH off. Raises EJp2kError
+// on an irreversible or otherwise unsupported codestream. This demonstrates
+// that the tier-1/tier-2/5-3 pipeline here is format-compatible with JasPer.
 function DecodeJpcStandard(const Bytes: TBytes): TJp2kImage;
 
 implementation
@@ -114,7 +114,7 @@ begin
   Result.Step := 1.0;
 end;
 
-{ Resolution-level extent. }
+// Resolution-level extent.
 function ResW(W, L, r: Integer): Integer; inline;
 begin
   Result := CeilDivPow2(W, L - r);
@@ -125,8 +125,8 @@ begin
   Result := CeilDivPow2(H, L - r);
 end;
 
-{ Enumerate the subbands of a (W,H) image transformed with L levels, in the
-  order LL(res0), then for res 1..L the HL, LH, HH bands. }
+// Enumerate the subbands of a (W,H) image transformed with L levels, in the
+// order LL(res0), then for res 1..L the HL, LH, HH bands.
 function EnumBands(W, H, L: Integer): TBandRects;
 var
   r, llw, llh, fw, fh, n: Integer;
@@ -153,7 +153,7 @@ begin
   end;
 end;
 
-{ ---- big-endian stream helpers ---- }
+// ---- big-endian stream helpers ----
 
 procedure PutU16(ms: TMemStream; v: Integer);
 begin
@@ -204,7 +204,7 @@ begin
   Result := v;
 end;
 
-{ Maximum magnitude bit-planes over an integer matrix sub-rectangle. }
+// Maximum magnitude bit-planes over an integer matrix sub-rectangle.
 function BandNumBps(const M: TIntArray; W, x0, y0, x1, y1: Integer): Integer;
 var
   x, y, mx, v: Integer;
@@ -220,7 +220,35 @@ begin
   if Result < 0 then Result := 0;
 end;
 
-{ ============================================================ encode ==== }
+// ============================================================ encode ====
+
+// Absolute quantiser step -> 16-bit expounded QCD step word (inverse of
+// StepToAbs), per ISO 15444-1 E.1 / JasPer jpc_abstorelstepsize:
+//      word = (expn << 11) or mant,  expn = scaleexpn - floor(log2(delta)),
+//      mant = frac(delta / 2^floor(log2 delta)) * 2^11.
+// For the irreversible 9/7 transform the nominal band gain is 0, so the
+// caller passes scaleexpn = precision for every band.
+function StepToWord(absdelta: Double; scaleexpn: Integer): Integer;
+var
+  p, expn, mant: Integer;
+
+  function P2(n: Integer): Double;
+  begin
+    if n >= 0 then P2 := Int64(1) shl n
+    else P2 := 1.0 / (Int64(1) shl (-n));
+  end;
+
+begin
+  if absdelta <= 0 then begin Result := 0; Exit; end;
+  p := 0;
+  while P2(p + 1) <= absdelta do Inc(p);
+  while P2(p) > absdelta do Dec(p);
+  mant := Trunc((absdelta / P2(p)) * 2048.0) and $7ff;   // strip leading 1
+  expn := scaleexpn - p;
+  if expn < 0 then expn := 0;
+  if expn > 31 then expn := 31;
+  Result := ((expn and $1f) shl 11) or mant;
+end;
 
 function EncodeToJpc(Img: TJp2kImage; const Opt: TEncodeOptions): TBytes;
 var
@@ -236,6 +264,7 @@ var
   pkt: TT2Packet;
   cdata: TIntArray;
   numpasses, nb, ci, cgw, cgh: Integer;
+  stepword, expn, gbits, maxbps, mb, mbb: Integer;
   mi: array of TIntMatrix;
   md: array of TDblMatrix;
 begin
@@ -256,7 +285,7 @@ begin
 
   if reversible then
   begin
-    { level shift into integer matrices }
+    // level shift into integer matrices
     for c := 0 to Img.NumComps - 1 do
     begin
       mi[c] := TIntMatrix.Create(Img.H, Img.W);
@@ -286,14 +315,16 @@ begin
       Fwd97(md[c], L);
       SetLength(coeffs[c], Img.W * Img.H);
       for i := 0 to Img.W * Img.H - 1 do
-        coeffs[c][i] := Round(md[c].Data[i] / Opt.Step);
+        // Truncate toward zero (dead-zone quantiser) to match the mid-point
+        // (q +/- 0.5)*step dequantisation used by conformant decoders.
+        coeffs[c][i] := Trunc(md[c].Data[i] / Opt.Step);
     end;
   end;
 
   bands := EnumBands(Img.W, Img.H, L);
   numbands := Length(bands);
 
-  { Per-band bit-plane count (max over components). }
+  // Per-band bit-plane count (max over components).
   SetLength(bandbps, numbands);
   for bi := 0 to numbands - 1 do
   begin
@@ -304,12 +335,30 @@ begin
     bandbps[bi] := nb;
   end;
 
-  { ---- tier-1 + tier-2: encode the body (RLCP: res, then component). ---- }
+  // Irreversible mode: derive a conformant expounded-quantiser step word
+  // (one step, applied uniformly to every band) plus the guard-bit count and
+  // nominal magnitude bit-depth Mb = numguard + expn - 1 that a standard
+  // decoder uses.  Choose just enough guard bits that Mb covers the widest
+  // band, so quantised coefficients are never truncated.
+  stepword := 0; expn := 0; gbits := 2; mb := 0;
+  if not reversible then
+  begin
+    stepword := StepToWord(Opt.Step, Img.Prec);   // gain 0 for 9/7
+    expn := stepword shr 11;
+    maxbps := 0;
+    for bi := 0 to numbands - 1 do maxbps := MaxI(maxbps, bandbps[bi]);
+    gbits := maxbps - expn + 1;
+    if gbits < 1 then gbits := 1;
+    if gbits > 7 then gbits := 7;
+    mb := gbits + expn - 1;
+  end;
+
+  // ---- tier-1 + tier-2: encode the body (RLCP: res, then component). ----
   body := TMemStream.Create;
   for r := 0 to L do
     for c := 0 to Img.NumComps - 1 do
     begin
-      { Build a packet for (component c, resolution r). }
+      // Build a packet for (component c, resolution r).
       SetLength(pkt.Bands, 0);
       for bi := 0 to numbands - 1 do
         if bands[bi].Res = r then
@@ -342,7 +391,11 @@ begin
                   for xx := 0 to cbw - 1 do
                     cdata[yy * cbw + xx] := coeffs[c][(by0 + yy) * Img.W + (bx0 + xx)];
                 nb := T1NumBps(cdata, cbw * cbh);
-                Cblks[ci].NumImsbs := bandbps[bi] - nb;
+                // numimsbs is relative to the band's nominal bit-depth: per-band
+                // bandbps for reversible (qstyle 0), the common Mb for the
+                // expounded irreversible quantiser.
+                if reversible then mbb := bandbps[bi] else mbb := mb;
+                Cblks[ci].NumImsbs := mbb - nb;
                 if nb > 0 then
                 begin
                   Cblks[ci].DataBytes := T1Encode(cdata, cbw, cbh, bands[bi].Orient, nb, numpasses);
@@ -359,11 +412,11 @@ begin
       T2EncodePacket(body, pkt);
     end;
 
-  { ---- write the codestream ---- }
+  // ---- write the codestream ----
   out_ := TMemStream.Create;
   PutU16(out_, MS_SOC);
 
-  { SIZ }
+  // SIZ
   PutU16(out_, MS_SIZ);
   PutU16(out_, 38 + 3 * Img.NumComps);          // Lsiz
   PutU16(out_, 0);                              // Rsiz
@@ -378,7 +431,7 @@ begin
     out_.PutC(1); out_.PutC(1);                 // XRsiz, YRsiz
   end;
 
-  { COD (ISO 15444-1 standard layout). }
+  // COD (ISO 15444-1 standard layout).
   PutU16(out_, MS_COD);
   PutU16(out_, 12);                             // Lcod
   out_.PutC(0);                                 // Scod (no SOP/EPH, max precinct)
@@ -391,26 +444,30 @@ begin
   out_.PutC(0);                                 //         code-block style
   out_.PutC(Ord(reversible));                   //         transform: 1=5/3, 0=9/7
 
-  { QCD (ISO 15444-1: no quantisation; per-band exponent encodes bit-planes
-    via numbps = numguardbits + exp - 1, with numguardbits = 2). }
+  // QCD (ISO 15444-1, conformant). Both modes carry numbps = numguard + exp - 1
+  // per band so a standard decoder knows each band's magnitude bit-depth.
   PutU16(out_, MS_QCD);
-  PutU16(out_, 2 + 1 + numbands);              // Lqcd
-  out_.PutC((2 shl 5) or 0);                   // Sqcd: 2 guard bits, qstyle = 0
-  for bi := 0 to numbands - 1 do
-    out_.PutC((MaxI(bandbps[bi] - 1, 0) and $1f) shl 3);  // exp = numbps - 1
-
-  { COM marker: private payload carrying the lossy quantiser step (a standard
-    decoder such as JasPer ignores comment markers). }
-  if not reversible then
+  if reversible then
   begin
-    PutU16(out_, MS_COM);
-    PutU16(out_, 2 + 2 + 8);                    // Lcom
-    PutU16(out_, 1);                            // Rcom = 1 (binary)
-    PutDbl(out_, Opt.Step);
+    // No quantisation: 1 byte/band, exponent = bit-planes (numguard = 2).
+    PutU16(out_, 2 + 1 + numbands);              // Lqcd
+    out_.PutC((2 shl 5) or 0);                   // Sqcd: 2 guard bits, qstyle = 0
+    for bi := 0 to numbands - 1 do
+      out_.PutC((MaxI(bandbps[bi] - 1, 0) and $1f) shl 3);  // exp = numbps - 1
+  end
+  else
+  begin
+    // Scalar expounded quantisation (qstyle = 2): 2 bytes/band carrying the
+    // real step word, so conformant decoders (JasPer, OpenJPEG, ...) dequantise
+    // correctly.  One uniform step is used, so every band gets the same word.
+    PutU16(out_, 2 + 1 + 2 * numbands);          // Lqcd
+    out_.PutC((gbits shl 5) or 2);               // Sqcd: guard bits, qstyle = 2
+    for bi := 0 to numbands - 1 do
+      PutU16(out_, stepword);
   end;
 
-  { SOT / SOD. Psot = length of the whole tile-part: SOT marker (2) +
-    SOT segment (10) + SOD marker (2) + packet data. }
+  // SOT / SOD. Psot = length of the whole tile-part: SOT marker (2) +
+  // SOT segment (10) + SOD marker (2) + packet data.
   PutU16(out_, MS_SOT);
   PutU16(out_, 10);                             // Lsot
   PutU16(out_, 0);                              // Isot (tile index)
@@ -418,7 +475,7 @@ begin
   out_.PutC(0); out_.PutC(1);                   // TPsot, TNsot
   PutU16(out_, MS_SOD);
 
-  { tile body }
+  // tile body
   seg := body;
   out_.Write(seg.ToBytes[0], seg.Size);
 
@@ -426,7 +483,7 @@ begin
 
   Result := out_.ToBytes;
 
-  { cleanup }
+  // cleanup
   out_.Free; body.Free;
   for c := 0 to Img.NumComps - 1 do
   begin
@@ -435,7 +492,7 @@ begin
   end;
 end;
 
-{ ============================================================ JP2 boxes = }
+// ============================================================ JP2 boxes =
 
 const
   BOX_JP   = $6a502020;   // 'jP  '  signature
@@ -464,12 +521,12 @@ var
   ms: TMemStream;
 begin
   ms := TMemStream.Create;
-  { Signature box. }
+  // Signature box.
   PutU32(ms, 12); PutU32(ms, BOX_JP); PutU32(ms, JP_MAGIC);
-  { File Type box. }
+  // File Type box.
   PutU32(ms, 20); PutU32(ms, BOX_FTYP);
   PutU32(ms, BRAND_JP2); PutU32(ms, 0); PutU32(ms, BRAND_JP2);
-  { JP2 Header superbox = Image Header + Colour Spec. }
+  // JP2 Header superbox = Image Header + Colour Spec.
   PutU32(ms, 45); PutU32(ms, BOX_JP2H);
   PutU32(ms, 22); PutU32(ms, BOX_IHDR);
   PutU32(ms, H); PutU32(ms, W); PutU16(ms, NumComps);
@@ -483,7 +540,7 @@ begin
   ms.PutC(0);                      // APPROX
   if NumComps >= 3 then PutU32(ms, 16)   // sRGB
   else PutU32(ms, 17);                    // greyscale
-  { Contiguous Codestream box. }
+  // Contiguous Codestream box.
   PutU32(ms, LongWord(8 + Length(Jpc))); PutU32(ms, BOX_JP2C);
   if Length(Jpc) > 0 then ms.Write(Jpc[0], Length(Jpc));
   Result := ms.ToBytes;
@@ -506,7 +563,7 @@ begin
     cstart := pos + 8;
     if boxlen = 1 then
     begin
-      { 64-bit extended length (we only use the low 32 bits). }
+      // 64-bit extended length (we only use the low 32 bits).
       if pos + 16 > total then Break;
       boxlen := (Int64(RdU32(Bytes, pos + 8)) shl 32) or Int64(RdU32(Bytes, pos + 12));
       cstart := pos + 16;
@@ -537,16 +594,16 @@ begin
     Result := DecodeJpcStandard(Bytes);
 end;
 
-{ ============================================================ decode ==== }
+// ============================================================ decode ====
 
 function DecodeFromJpc(const Bytes: TBytes): TJp2kImage;
 begin
-  { The encoder now emits standard markers; decode via the standard decoder. }
+  // The encoder now emits standard markers; decode via the standard decoder.
   Result := DecodeJpcStandard(Bytes);
 end;
 
 
-{ ================================================= standard decoder ===== }
+// ================================================= standard decoder =====
 
 function Pow2(n: Integer): Double;
 begin
@@ -554,9 +611,9 @@ begin
   else Result := 1.0 / (Int64(1) shl (-n));
 end;
 
-{ Absolute quantiser step from a 16-bit QCD step word (expounded), per
-  ISO 15444-1 E.1: absstepsize = (1 + mant/2^11) * 2^(numbits - expn),
-  with numbits = prec (the nominal gain is 0 for the 9/7 transform). }
+// Absolute quantiser step from a 16-bit QCD step word (expounded), per
+// ISO 15444-1 E.1: absstepsize = (1 + mant/2^11) * 2^(numbits - expn),
+// with numbits = prec (the nominal gain is 0 for the 9/7 transform).
 function StepToAbs(word, prec: Integer): Double;
 var
   expn, mant: Integer;
@@ -655,7 +712,7 @@ begin
           GetU16(ms);                          // num layers
           mct := ms.GetC <> 0;
           L := ms.GetC;                        // decomposition levels
-          { remaining SPcod fields ignored (cblk size fixed 64, style 0) }
+          // remaining SPcod fields ignored (cblk size fixed 64, style 0)
           ms.GetC; ms.GetC; ms.GetC;
           reversible := ms.GetC <> 0;          // transform: 1 = 5/3
           numbands := 1 + 3 * L;
@@ -702,7 +759,7 @@ begin
     ms.Seek(segend, SEEK_SET);
   end;
 
-  { Per-component band bit-planes / step words (QCC overrides QCD). }
+  // Per-component band bit-planes / step words (QCC overrides QCD).
   if Length(numbps) = 0 then
   begin
     SetLength(numbps, NumComps);
@@ -728,7 +785,7 @@ begin
     FillChar(coeffs[c][0], W * H * SizeOf(Integer), 0);
   end;
 
-  { Tier-2 + tier-1 in LRCP order (1 layer): resolution, then component. }
+  // Tier-2 + tier-1 in LRCP order (1 layer): resolution, then component.
   for r := 0 to L do
     for c := 0 to NumComps - 1 do
     begin
@@ -784,7 +841,7 @@ begin
         end;
     end;
 
-  { Inverse transform, inverse MCT, level shift, clip. }
+  // Inverse transform, inverse MCT, level shift, clip.
   Img := TJp2kImage.Create(W, H, NumComps, prec[0]);
   if reversible then
   begin
@@ -818,8 +875,8 @@ begin
       mds[c] := TDblMatrix.Create(H, W);
       if qstyleMain <> 0 then
       begin
-        { Standard expounded quantisation: per-band step with mid-point
-          reconstruction (reads lossy 9/7 files from other encoders). }
+        // Standard expounded quantisation: per-band step with mid-point
+        //reconstruction (reads lossy 9/7 files from other encoders).
         for bi := 0 to Length(bands) - 1 do
         begin
           abss := StepToAbs(stepw[c][bi], prec[c]);
@@ -834,7 +891,7 @@ begin
         end;
       end
       else
-        { Our own files: uniform step quantiser (step from the COM marker). }
+        // Our own files: uniform step quantiser (step from the COM marker).
         for i := 0 to W * H - 1 do
           mds[c].Data[i] := coeffs[c][i] * step;
       Inv97(mds[c], L);

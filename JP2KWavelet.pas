@@ -27,17 +27,17 @@ interface
 uses
   JP2KCommon, JP2KMatrix;
 
-{ Multi-level 2-D transforms over a whole matrix (NumLevels resolution
-  reductions). }
+// Multi-level 2-D transforms over a whole matrix (NumLevels resolution
+// reductions).
 procedure Fwd53(M: TIntMatrix; NumLevels: Integer);
 procedure Inv53(M: TIntMatrix; NumLevels: Integer);
 procedure Fwd97(M: TDblMatrix; NumLevels: Integer);
 procedure Inv97(M: TDblMatrix; NumLevels: Integer);
 
-{ Origin/parity-aware inverse transforms (for tiles whose component coordinate
-  origin is not the multiple of 2^level that the origin-0 versions assume).
-  OX/OY are the tile-component's coordinate origin. These reduce *exactly* to
-  Inv53/Inv97 when OX=OY=0. }
+// Origin/parity-aware inverse transforms (for tiles whose component coordinate
+// origin is not the multiple of 2^level that the origin-0 versions assume).
+// OX/OY are the tile-component's coordinate origin. These reduce *exactly* to
+// Inv53/Inv97 when OX=OY=0.
 procedure Inv53Org(M: TIntMatrix; NumLevels, OX, OY: Integer);
 procedure Inv97Org(M: TDblMatrix; NumLevels, OX, OY: Integer);
 
@@ -48,14 +48,14 @@ const
   B97 = -0.052980118572961;
   G97 =  0.882911075530934;
   D97 =  0.443506852043971;
-  { JasPer's exact low-/high-pass gains (jpc_qmfb.c, WT_DOSCALE). Analysis
-    multiplies low by LGAIN and high by HGAIN; synthesis by the reciprocals.
-    Using these exact values makes the 9/7 transform match JasPer. }
+  // JasPer's exact low-/high-pass gains (jpc_qmfb.c, WT_DOSCALE). Analysis
+  // multiplies low by LGAIN and high by HGAIN; synthesis by the reciprocals.
+  // Using these exact values makes the 9/7 transform match JasPer.
   LGAIN = 1.0 / 1.23017410558578;
   HGAIN = 1.0 / 1.62578613134411;
 
-{ Reflect index p into [0, n-1] using whole-sample symmetric extension
-  (mirror about the endpoints, endpoints not duplicated). }
+// Reflect index p into [0, n-1] using whole-sample symmetric extension
+// (mirror about the endpoints, endpoints not duplicated).
 function Reflect(p, n: Integer): Integer; inline;
 var
   period: Integer;
@@ -70,7 +70,7 @@ begin
   Result := p;
 end;
 
-{ ===================================================== 5/3 integer ====== }
+// ===================================================== 5/3 integer ======
 
 procedure Fwd53Line(var D: TIntArray; Off, Stride, N: Integer);
 var
@@ -81,14 +81,14 @@ var
   end;
 begin
   if N = 1 then Exit;
-  { Predict (high/odd): d[i] -= floor((d[i-1]+d[i+1])/2). }
+  // Predict (high/odd): d[i] -= floor((d[i-1]+d[i+1])/2).
   i := 1;
   while i < N do
   begin
     D[Off + i * Stride] := D[Off + i * Stride] - FloorDivPow2(GV(i - 1) + GV(i + 1), 1);
     Inc(i, 2);
   end;
-  { Update (low/even): d[i] += floor((d[i-1]+d[i+1]+2)/4). }
+  // Update (low/even): d[i] += floor((d[i-1]+d[i+1]+2)/4).
   i := 0;
   while i < N do
   begin
@@ -106,14 +106,14 @@ var
   end;
 begin
   if N = 1 then Exit;
-  { Undo update (even). }
+  // Undo update (even).
   i := 0;
   while i < N do
   begin
     D[Off + i * Stride] := D[Off + i * Stride] - FloorDivPow2(GV(i - 1) + GV(i + 1) + 2, 2);
     Inc(i, 2);
   end;
-  { Undo predict (odd). }
+  // Undo predict (odd).
   i := 1;
   while i < N do
   begin
@@ -122,7 +122,7 @@ begin
   end;
 end;
 
-{ Move low-pass (even) samples to the front, high-pass (odd) to the back. }
+// Move low-pass (even) samples to the front, high-pass (odd) to the back.
 procedure DeinterleaveI(var D: TIntArray; Off, Stride, N: Integer);
 var
   tmp: TIntArray;
@@ -181,7 +181,7 @@ var
   ws, hs: array of Integer;
   lvl, w, h, r, c, n: Integer;
 begin
-  { Recompute the band dimensions for each level (forward order). }
+  // Recompute the band dimensions for each level (forward order).
   SetLength(ws, NumLevels + 1);
   SetLength(hs, NumLevels + 1);
   w := M.Cols; h := M.Rows;
@@ -194,7 +194,7 @@ begin
     Inc(n);
     ws[n] := w; hs[n] := h;
   end;
-  { Inverse in reverse level order. }
+  // Inverse in reverse level order.
   for lvl := n - 1 downto 0 do
   begin
     w := ws[lvl]; h := hs[lvl];
@@ -213,7 +213,7 @@ begin
   end;
 end;
 
-{ ===================================================== 9/7 float ======= }
+// ===================================================== 9/7 float =======
 
 procedure Fwd97Line(var D: array of Double; Off, Stride, N: Integer);
 var
@@ -254,7 +254,7 @@ begin
       Inc(i, 2);
     end;
   end;
-  { Scaling: low (even) *= LGAIN, high (odd) *= HGAIN (matches JasPer). }
+  // Scaling: low (even) *= LGAIN, high (odd) *= HGAIN (matches JasPer).
   i := 0;
   while i < N do
   begin
@@ -277,7 +277,7 @@ var
     Result := D[Off + Reflect(p, N) * Stride];
   end;
 begin
-  { Undo scaling: low (even) /= LGAIN, high (odd) /= HGAIN (matches JasPer). }
+  // Undo scaling: low (even) /= LGAIN, high (odd) /= HGAIN (matches JasPer).
   i := 0;
   while i < N do
   begin
@@ -407,10 +407,10 @@ begin
   end;
 end;
 
-{ ===================================== origin/parity-aware inverse ====== }
+// ===================================== origin/parity-aware inverse ======
 
-{ Interleave deinterleaved (low half | high half) -> natural order, where a
-  natural index i is a low-pass sample iff (i mod 2) = P. }
+// Interleave deinterleaved (low half | high half) -> natural order, where a
+// natural index i is a low-pass sample iff (i mod 2) = P.
 procedure InterleaveIP(var D: TIntArray; Off, Stride, N, P: Integer);
 var
   tmp: TIntArray;
@@ -439,7 +439,7 @@ begin
   for i := 0 to N - 1 do D[Off + i * Stride] := tmp[i];
 end;
 
-{ Inverse 5/3 lifting on natural-order data; low samples at i mod 2 = P. }
+// Inverse 5/3 lifting on natural-order data; low samples at i mod 2 = P.
 procedure Inv53LineP(var D: TIntArray; Off, Stride, N, P: Integer);
 var
   i: Integer;
@@ -448,8 +448,8 @@ var
 begin
   if N <= 1 then
   begin
-    { single sample: a lone high-pass coefficient (parity 1) is halved
-      (jpc_ft_invlift_row, numcols=1 case); a low/LL sample passes through. }
+    // single sample: a lone high-pass coefficient (parity 1) is halved
+    // (jpc_ft_invlift_row, numcols=1 case); a low/LL sample passes through.
     if (N = 1) and (P = 1) then D[Off] := FloorDivPow2(D[Off], 1);
     Exit;
   end;
@@ -473,8 +473,8 @@ var
   function GV(p2: Integer): Double; inline;
   begin Result := D[Off + Reflect(p2, N) * Stride]; end;
 begin
-  if N <= 1 then Exit;   { 9/7: single sample passes through (no scaling) }
-  { undo scaling }
+  if N <= 1 then Exit;   // 9/7: single sample passes through (no scaling)
+  // undo scaling
   i := P;
   while i < N do begin D[Off + i * Stride] := D[Off + i * Stride] / LGAIN; Inc(i, 2); end;
   i := 1 - P;
@@ -513,7 +513,7 @@ begin
     for r := 0 to h - 1 do
     begin
       if w > 1 then InterleaveIP(M.Data, r * cols, 1, w, px[lvl]);
-      Inv53LineP(M.Data, r * cols, 1, w, px[lvl]);   { handles w=1 (parity halving) }
+      Inv53LineP(M.Data, r * cols, 1, w, px[lvl]);   // handles w=1 (parity halving)
     end;
     for c := 0 to w - 1 do
     begin
