@@ -1,5 +1,29 @@
 # JPEG 2000 encoder/decoder ported from JASPER
 
+# Usage
+```
+uses Jp2ImageX;
+
+Image1.Picture.LoadFromFile('test.jp2');
+```
+
+# Saving to jp2
+
+```
+var Jp2: TJp2Image;
+    Bmp: TBitmap;
+begin
+  Bmp := TBitmap.Create;
+  Bmp.LoadFromFile('test.bmp');
+
+  Jp2 := TJp2Image.Create;
+  Jp2.Assign(Bmp);
+  Bmp.Free;
+
+  Jp2.SaveToFile('out.Jp2');
+  Jp2.free;
+```
+
 # Usage of command-line program:
 ```
   jp2k - command-line front end for the Free Pascal JPEG 2000 codec
